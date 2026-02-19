@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenGradient ModelHub</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+
+<style>
+body{background:#0f172a;color:white;font-family:Arial;padding:20px}
+.card{background:#020617;padding:20px;border-radius:14px;margin-top:20px}
+button{padding:10px 18px;border:none;border-radius:10px;background:#38bdf8;font-weight:bold;cursor:pointer}
+input{padding:10px;width:100%;margin-top:10px;border-radius:8px;border:none}
+</style>
+</head>
+
+<body>
+
+<h2>OpenGradient ModelHub</h2>
+
+<div class="card">
+<button onclick="connectWallet()">Connect Wallet</button>
+<p>Address: <span id="address">-</span></p>
+<p>Network: <span id="network">-</span></p>
+<p>ETH Balance: <span id="ethBalance">-</span></p>
+</div>
+
+<div class="card">
+<h3>Bridge Base Sepolia → OpenGradient Sepolia</h3>
+<input id="bridgeAmount" placeholder="Amount in ETH">
+<button onclick="bridgeETH()">Bridge ETH</button>
+</div>
+
+<div class="card">
+<h3>Stake iDAI</h3>
+<input id="stakeAmount" placeholder="Amount to stake">
+<button onclick="stakeTokens()">Stake</button>
+<p>Your iDAI Balance: <span id="tokenBalance">-</span></p>
+</div>
+
+<script>
+let provider;
+let signer;
+let userAddress;
+
+// 🔹 PUT YOUR CONTRACTS
+const tokenAddress = "0xYourToken";
+const stakingAddress = "0xYourStakingContract";
+
+const tokenABI = [
+ "function balanceOf(address owner) view returns(uint256)",
+ "function decimals() view returns(uint8)",
+ "function approve(address spender,uint256 amount) returns(bool)"
+];
+
+const stakingABI = [
+ "function stake(uint256 amount) public"
+];
+
+// 🔹 BASE SEPOLIA
+const baseSepolia = {
+ chainId: "0x14a34",
+ chainName: "Base Sepolia",
+ nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},
+ rpcUrls:["https://sepolia.base.org"],
+ blockExplorerUrls:["https://sepolia.basescan.org"]
+};
+
+// 🔹 OPENGRADIENT SEPOLIA (PUT REAL VALUES)
+const openGradient = {
+ chainId: "0xYourChainId",
+ chainName: "OpenGradient Sepolia",
+ nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},
+ rpcUrls:["https://your-rpc-url"],
+ blockExplorerUrls:["https://your-explorer"]
+};
+
+async function connectWallet(){
+ provider = new ethers.providers.Web3Provider(window.ethereum);
+ await provider.send("eth_requestAccounts", []);
+ signer = provider.getSigner();
+ userAddress = await signer.getAddress();
+
+ document.getElementById("address").innerText = userAddress;
+
+ const network = await provider.getNetwork();
+ document.getElementById("network").innerText = network.name;
+
+ loadBalances();
+}
+
+async function loadBalances(){
+ const balance = await provider.getBalance(userAddress);
+ document.getElementById("ethBalance").innerText =
+ ethers.utils.formatEther(balance);
+
+ const token = new ethers.Contract(tokenAddress, tokenABI, provider);
+ const decimals = await token.decimals();
+ const bal = await token.balanceOf(userAddress);
+
+ document.getElementById("tokenBalance").innerText =
+ ethers.utils.formatUnits(bal, decimals);
+}
+
+async function switchToBase(){
+ await window.ethereum.request({
+ method:"wallet_addEthereumChain",
+ params:[baseSepolia]
+ });
+}
+
+async function switchToOpenGradient(){
+ await window.ethereum.request({
+ method:"wallet_addEthereumChain",
+ params:[openGradient]
+ });
+}
+
+async function bridgeETH(){
+ const amount = document.getElementById("bridgeAmount").value;
+
+ await switchToBase();
+
+ const tx = await signer.sendTransaction({
+   to:userAddress, // 🔁 replace with bridge contract
+   value:ethers.utils.parseEther(amount)
+ });
+
+ await tx.wait();
+
+ alert("Bridging Initiated");
+
+ await switchToOpenGradient();
+}
+
+async function stakeTokens(){
+ const amount = document.getElementById("stakeAmount").value;
+
+ await switchToOpenGradient();
+
+ const token = new ethers.Contract(tokenAddress, tokenABI, signer);
+ const staking = new ethers.Contract(stakingAddress, stakingABI, signer);
+
+ const decimals = await token.decimals();
+
+ const tx1 = await token.approve(
+ stakingAddress,
+ ethers.utils.parseUnits(amount,decimals)
+ );
+ await tx1.wait();
